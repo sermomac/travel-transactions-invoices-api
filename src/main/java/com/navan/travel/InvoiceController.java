@@ -49,9 +49,15 @@ public class InvoiceController {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(
                     Map.of("error", ex.getMessage()));
         } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(
+        if (ex.getMessage() != null
+                && ex.getMessage().startsWith("Transaction not found:")) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
                     Map.of("error", ex.getMessage()));
         }
+
+        return ResponseEntity.badRequest().body(
+                Map.of("error", ex.getMessage()));
+    }
     }
 
     @GetMapping("/{id}")

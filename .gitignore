@@ -1,5 +1,23 @@
+```gitignore
+# Build output
 target/
+
+# Local application data
 data/
-.DS_Store
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# IDE files
 .idea/
 .vscode/
+*.iml
+
+# macOS
+.DS_Store
+```

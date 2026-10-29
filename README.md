@@ -1,6 +1,6 @@
 # Travel Transactions and Invoices API
 
-A Spring Boot REST API for managing travel transactions and creating invoices from one or more transactions. Supports flights, hotels, rail journeys, and Navan fees, including tax and fee lines, type-specific metadata, invoice snapshots, and rollups.
+A Spring Boot REST API for managing travel transactions and creating invoices from one or more transactions. Supported transaction types are flights, hotels, rail journeys, and Navan fees.
 
 ## Requirements
 
@@ -8,50 +8,50 @@ A Spring Boot REST API for managing travel transactions and creating invoices fr
 - Maven 3.10+
 - SQLite
 
-## Run locally
+## Run the API
 
-From the project root:
+From the project root, run:
 
 ```bash
-mvn test
 mvn spring-boot:run
 ```
 
 The API runs at `http://localhost:8080`.
 
-The application uses SQLite at `./data/travel-inventory.db`. The schema is initialized from `src/main/resources/schema.sql`.
+The SQLite database is configured at `./data/travel-inventory.db`. The schema is initialized from `src/main/resources/schema.sql`.
+
+## Run tests
+
+From the project root, run:
+
+```bash
+mvn test
+```
 
 ## API overview
 
-| Method | Endpoint             | Description                                     |
-| ------ | -------------------- | ----------------------------------------------- |
-| POST   | `/transactions`      | Create a transaction                            |
-| GET    | `/transactions`      | List transactions with pagination               |
-| GET    | `/transactions/{id}` | Retrieve a transaction and its tax/fee lines    |
-| PATCH  | `/transactions/{id}` | Update a transaction not included in an invoice |
-| DELETE | `/transactions/{id}` | Delete a transaction not included in an invoice |
-| POST   | `/invoices`          | Create an invoice from transaction IDs          |
-| GET    | `/invoices`          | List invoices with pagination                   |
-| GET    | `/invoices/{id}`     | Retrieve an invoice, snapshots, and rollups     |
-| PATCH  | `/invoices/{id}`     | Replace the transactions in an invoice          |
-| DELETE | `/invoices/{id}`     | Delete an invoice and its snapshots             |
+| Method | Endpoint             | Description                                  |
+| ------ | -------------------- | -------------------------------------------- |
+| POST   | `/transactions`      | Create a transaction                         |
+| GET    | `/transactions`      | List transactions                            |
+| GET    | `/transactions/{id}` | Retrieve a transaction and its tax/fee lines |
+| PATCH  | `/transactions/{id}` | Update a transaction                         |
+| DELETE | `/transactions/{id}` | Delete a transaction                         |
+| POST   | `/invoices`          | Create an invoice from transaction IDs       |
+| GET    | `/invoices`          | List invoices                                |
+| GET    | `/invoices/{id}`     | Retrieve an invoice and its snapshots        |
+| PATCH  | `/invoices/{id}`     | Replace the transactions in an invoice       |
+| DELETE | `/invoices/{id}`     | Delete an invoice                            |
 
-List endpoints default to `limit=50` and `offset=0`. The maximum page size is 100.
+Both list endpoints default to `limit=50` and `offset=0`. The maximum page size is 100.
 
 ## Create transactions
 
-All transaction requests use these common fields:
+Each create request includes `external_id`, `type`, `currency`, `occurred_at`, `total`, `metadata`, `tax_lines`, and `fee_lines`.
 
-- `external_id`: required unique external identifier
-- `type`: `flight`, `hotel`, `rail`, or `navan_fee`
-- `currency`: currency code, such as `EUR`
-- `occurred_at`: transaction timestamp
-- `total`: non-negative amount
-- `metadata`: type-specific JSON object
-- `tax_lines`: required list of tax lines with `name`, `rate`, and `amount`
-- `fee_lines`: required list of fee lines with `name` and `amount`
+The examples use distinct external IDs. Use the database ID returned by each successful create request for later commands.
 
-### Flight
+### 1. Create a flight
 
 ```bash
 curl -i -X POST http://localhost:8080/transactions \
@@ -66,16 +66,14 @@ curl -i -X POST http://localhost:8080/transactions \
       "origin": "TXL",
       "destination": "LHR",
       "fare": 180,
-      "coupons": [
-        {
-          "flight_number": "BA982",
-          "from": "TXL",
-          "to": "LHR",
-          "carrier": "BA",
-          "departure": "2026-03-11T07:00:00Z",
-          "arrival": "2026-03-11T08:20:00Z"
-        }
-      ]
+      "coupons": [{
+        "flight_number": "BA982",
+        "from": "TXL",
+        "to": "LHR",
+        "carrier": "BA",
+        "departure": "2026-03-11T07:00:00Z",
+        "arrival": "2026-03-11T08:20:00Z"
+      }]
     },
     "tax_lines": [
       {"name": "Airport tax", "amount": 15.00}
@@ -86,7 +84,7 @@ curl -i -X POST http://localhost:8080/transactions \
   }'
 ```
 
-### Hotel
+### 2. Create a hotel
 
 ```bash
 curl -i -X POST http://localhost:8080/transactions \
@@ -117,7 +115,7 @@ curl -i -X POST http://localhost:8080/transactions \
   }'
 ```
 
-### Rail
+### 3. Create a rail transaction
 
 ```bash
 curl -i -X POST http://localhost:8080/transactions \
@@ -155,7 +153,7 @@ curl -i -X POST http://localhost:8080/transactions \
   }'
 ```
 
-### Navan trip fee
+### 4. Create a Navan trip fee
 
 ```bash
 curl -i -X POST http://localhost:8080/transactions \
@@ -176,7 +174,7 @@ curl -i -X POST http://localhost:8080/transactions \
   }'
 ```
 
-### Navan agent-call fee
+### 5. Create a Navan agent-call fee
 
 ```bash
 curl -i -X POST http://localhost:8080/transactions \
@@ -197,27 +195,13 @@ curl -i -X POST http://localhost:8080/transactions \
   }'
 ```
 
-The `navan_fee` type accepts `fee_kind` values `trip_fee` and `agent_call_fee`.
+The `navan_fee` type uses `fee_kind` values `trip_fee` and `agent_call_fee`.
 
-## Retrieve and list transactions
+## Duplicate create
 
-```bash
-# Retrieve a transaction
-curl -i http://localhost:8080/transactions/1
+`external_id` is unique. Repeating a create request with an existing external ID returns `409 Conflict` rather than creating a second transaction.
 
-# List the first page
-curl -i 'http://localhost:8080/transactions'
-
-# Request a page
-curl -i 'http://localhost:8080/transactions?limit=20&offset=0'
-
-# A requested limit above 100 is capped at 100
-curl -i 'http://localhost:8080/transactions?limit=1000&offset=0'
-```
-
-## Duplicate transaction handling
-
-`external_id` is unique in the database. A repeated identifier returns HTTP `409 Conflict`.
+For example, run the flight creation request above a second time. The duplicate request uses the same `external_id`:
 
 ```bash
 curl -i -X POST http://localhost:8080/transactions \
@@ -227,34 +211,53 @@ curl -i -X POST http://localhost:8080/transactions \
     "type": "flight",
     "currency": "EUR",
     "occurred_at": "2026-03-11T06:40:00Z",
-    "total": 220,
+    "total": 220.00,
     "metadata": {
       "origin": "TXL",
       "destination": "LHR",
       "fare": 180,
-      "coupons": [
-        {
-          "flight_number": "BA982",
-          "from": "TXL",
-          "to": "LHR",
-          "carrier": "BA",
-          "departure": "2026-03-11T07:00:00Z",
-          "arrival": "2026-03-11T08:20:00Z"
-        }
-      ]
+      "coupons": []
     },
     "tax_lines": [],
     "fee_lines": []
   }'
 ```
 
-## Update and delete transactions
+Expected result for the duplicate request: `409 Conflict`.
 
-Transactions included in an invoice cannot be updated or deleted; these operations return HTTP `409 Conflict`.
+## Get and list transactions
 
-The transaction update endpoint requires the full set of fields used for transaction creation, including valid type-specific metadata.
+Retrieve a transaction by its database ID:
 
-Update a transaction that is **not included in an invoice**:
+```bash
+curl -i http://localhost:8080/transactions/1
+```
+
+List transactions:
+
+```bash
+curl -i 'http://localhost:8080/transactions'
+```
+
+List a specific page:
+
+```bash
+curl -i 'http://localhost:8080/transactions?limit=20&offset=0'
+```
+
+Request a limit above the maximum:
+
+```bash
+curl -i 'http://localhost:8080/transactions?limit=1000&offset=0'
+```
+
+The maximum page size is 100.
+
+## Patch and delete transactions
+
+### Patch a transaction not included in an invoice
+
+Replace `1` with the database ID of a transaction that is not included in an invoice.
 
 ```bash
 curl -i -X PATCH http://localhost:8080/transactions/1 \
@@ -268,29 +271,62 @@ curl -i -X PATCH http://localhost:8080/transactions/1 \
       "origin": "TXL",
       "destination": "LHR",
       "fare": 185,
-      "coupons": [
-        {
-          "flight_number": "BA982",
-          "from": "TXL",
-          "to": "LHR",
-          "carrier": "BA",
-          "departure": "2026-03-11T07:00:00Z",
-          "arrival": "2026-03-11T08:20:00Z"
-        }
-      ]
+      "coupons": [{
+        "flight_number": "BA982",
+        "from": "TXL",
+        "to": "LHR",
+        "carrier": "BA",
+        "departure": "2026-03-11T07:00:00Z",
+        "arrival": "2026-03-11T08:20:00Z"
+      }]
     },
     "tax_lines": [],
     "fee_lines": []
   }'
 ```
 
-Delete a transaction that is **not included in an invoice**:
+### Delete a transaction not included in an invoice
 
 ```bash
 curl -i -X DELETE http://localhost:8080/transactions/1
 ```
 
-## Create and retrieve invoices
+### Verify `409 Conflict` for an invoiced transaction
+
+Transactions included in an invoice cannot be patched or deleted. Both operations return `409 Conflict`.
+
+Replace `FLIGHT_TRANSACTION_ID` with the actual database ID of a transaction included in an invoice.
+
+Attempt to patch it:
+
+```bash
+curl -i -X PATCH http://localhost:8080/transactions/FLIGHT_TRANSACTION_ID \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "type": "flight",
+    "currency": "EUR",
+    "occurred_at": "2026-03-11T06:40:00Z",
+    "total": 225.00,
+    "metadata": {
+      "origin": "TXL",
+      "destination": "LHR",
+      "fare": 185,
+      "coupons": []
+    },
+    "tax_lines": [],
+    "fee_lines": []
+  }'
+```
+
+Attempt to delete it:
+
+```bash
+curl -i -X DELETE http://localhost:8080/transactions/FLIGHT_TRANSACTION_ID
+```
+
+Expected result for both operations: `409 Conflict`. The invoiced transaction remains unchanged.
+
+## Create, get, and list invoices
 
 Create an invoice from one transaction:
 
@@ -305,24 +341,40 @@ Create an invoice from multiple transactions:
 ```bash
 curl -i -X POST http://localhost:8080/invoices \
   -H 'Content-Type: application/json' \
-  -d '{"transaction_ids": [1, 2, 3]}'
+  -d '{"transaction_ids": [1, 2, 3, 4, 5]}'
 ```
 
-All transactions in an invoice must use the same currency. Mixed-currency requests return HTTP `409 Conflict`. Duplicate transaction IDs are rejected.
+Replace the example IDs with valid transaction database IDs. All transactions in an invoice must use the same currency. A mixed-currency invoice request returns `409 Conflict`.
+
+Retrieve an invoice by ID:
 
 ```bash
-# Retrieve an invoice and its snapshots/rollups
 curl -i http://localhost:8080/invoices/1
-
-# List invoices
-curl -i 'http://localhost:8080/invoices?limit=50&offset=0'
 ```
 
-Invoice responses include transaction snapshots, tax rollups, and fee rollups. Snapshots preserve the transaction data used when the invoice was created.
+List invoices:
 
-## Replace an invoice's transactions
+```bash
+curl -i 'http://localhost:8080/invoices'
+```
 
-Replace an invoice's transaction set with a new one:
+List a specific page:
+
+```bash
+curl -i 'http://localhost:8080/invoices?limit=20&offset=0'
+```
+
+Request a limit above the maximum:
+
+```bash
+curl -i 'http://localhost:8080/invoices?limit=1000&offset=0'
+```
+
+The maximum page size is 100.
+
+## Patch and delete invoices
+
+Replace the transactions in an invoice:
 
 ```bash
 curl -i -X PATCH http://localhost:8080/invoices/1 \
@@ -330,33 +382,23 @@ curl -i -X PATCH http://localhost:8080/invoices/1 \
   -d '{"transaction_ids": [2, 3]}'
 ```
 
-The replacement must contain valid, existing transaction IDs with a consistent currency. Failed validation leaves the existing invoice unchanged.
+Replace the example invoice and transaction IDs with valid database IDs. The replacement transaction set must use a consistent currency.
 
-## Delete an invoice
+Delete an invoice:
 
 ```bash
 curl -i -X DELETE http://localhost:8080/invoices/1
 ```
 
-Deleting an invoice removes the invoice and its snapshots. The underlying transactions remain.
+Deleting an invoice removes the invoice and its snapshots. The underlying transactions remain available.
 
 ## Error behavior
 
-| HTTP status       | Meaning                                                                       |
-| ----------------- | ----------------------------------------------------------------------------- |
-| `201 Created`     | Transaction or invoice created                                                |
-| `200 OK`          | Retrieval, listing, or successful replacement                                 |
-| `204 No Content`  | Invoice or transaction deleted                                                |
-| `400 Bad Request` | Invalid input or metadata                                                     |
-| `404 Not Found`   | Requested resource does not exist                                             |
-| `409 Conflict`    | Duplicate external ID, mixed currency, or transaction protected by an invoice |
-
-## Tests
-
-Run the automated test suite:
-
-```bash
-mvn test
-```
-
-Tests cover duplicate external IDs, all five transaction types, invoice snapshots and totals, mixed-currency rejection, invoiced transaction restrictions, concurrent duplicate creation, pagination limits, and missing-resource handling.
+| HTTP status       | Meaning                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------ |
+| `201 Created`     | Transaction or invoice created                                                       |
+| `200 OK`          | Successful retrieval, listing, or replacement                                        |
+| `204 No Content`  | Successful deletion                                                                  |
+| `400 Bad Request` | Invalid request, metadata, or pagination parameters                                  |
+| `404 Not Found`   | Requested resource or referenced ID does not exist                                   |
+| `409 Conflict`    | Duplicate `external_id`, mixed currency, or update/delete of an invoiced transaction |

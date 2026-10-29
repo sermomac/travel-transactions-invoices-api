@@ -50,9 +50,8 @@ public class TransactionController {
                     request.fee_lines()
             );
 
-            return ResponseEntity.status(HttpStatus.CREATED).body(
-                    Map.of("id", id, "external_id", request.external_id())
-            );
+            return ResponseEntity.status(HttpStatus.CREATED)
+                .body(getById(id).getBody());
             } catch (DuplicateKeyException ex) {
                 return transactionService.findByExternalId(request.external_id())
                     .<ResponseEntity<?>>map(existing ->
@@ -211,7 +210,7 @@ public class TransactionController {
             Map.of("error", ex.getMessage()));
 }
     }
-    
+
     @DeleteMapping("/{id}")
     public ResponseEntity<?> delete(@PathVariable long id) {
         try {

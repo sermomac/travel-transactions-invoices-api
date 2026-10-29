@@ -46,6 +46,14 @@ public class TransactionService {
         validateRequired(currency, "currency");
         validateRequired(occurredAt, "occurred_at");
 
+        if (taxLines == null) {
+            throw new IllegalArgumentException("tax_lines is required");
+        }
+
+        if (feeLines == null) {
+            throw new IllegalArgumentException("fee_lines is required");
+        }
+
         if (!VALID_TYPES.contains(type)) {
             throw new IllegalArgumentException(
                     "Unsupported transaction type: " + type);
@@ -115,7 +123,7 @@ public class TransactionService {
 
 
     @Transactional
-    public void updateTransaction(
+    public synchronized void updateTransaction(
             long id,
             String type,
             String currency,
@@ -184,7 +192,7 @@ public class TransactionService {
     }
 
     @Transactional
-    public void deleteTransaction(long id) {
+    public synchronized void deleteTransaction(long id) {
         if (transactionRepository.findById(id).isEmpty()) {
             throw new IllegalArgumentException("Transaction not found: " + id);
         }
